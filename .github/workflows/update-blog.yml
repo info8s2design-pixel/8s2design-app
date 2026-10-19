@@ -1,0 +1,28 @@
+name: Aggiorna blog RSS
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+permissions:
+  contents: write
+jobs:
+  sync-blog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Scarica RSS e genera JSON
+        run: python scripts/update_blog.py
+      - name: Pubblica aggiornamento nel repository
+        run: |
+          if ! git diff --quiet -- data/blog.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/blog.json
+            git commit -m "Aggiorna articoli blog da RSS"
+            git push
+          fi
