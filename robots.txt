@@ -1,0 +1,6 @@
+# Informazioni di scansione per il progetto 8S2 Design App
+# Nota: per GitHub Pages il robots.txt valido per i crawler deve trovarsi
+# alla radice dell'host github.io, non in una sottocartella di progetto.
+User-agent: *
+Allow: /
+Sitemap: https://info8s2design-pixel.github.io/8s2design-app/sitemap.xml
