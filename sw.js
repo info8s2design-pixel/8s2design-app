@@ -1,4 +1,4 @@
-const CACHE='8s2design-v1.2.10';
+const CACHE='8s2design-v1.2.11';
 const CORE=['./','./index.html','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png','./icons/favicon.ico','./icons/favicon-32.png','./icons/favicon-48.png','./icons/apple-touch-icon.png','./assets/home-trasformiamo.jpg','./assets/prenota-call.jpg','./assets/perche-8s2design.jpg','./assets/offerta-bcard-originale.jpg','./assets/garanzie-originale.jpg'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(CORE)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('8s2design-')&&key!==CACHE).map(key=>caches.delete(key)))),self.clients.claim()])));
