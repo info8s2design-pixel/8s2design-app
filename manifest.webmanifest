@@ -20,5 +20,10 @@
       "type": "image/png",
       "purpose": "any"
     }
-  ]
+  ],
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "orientation": "any"
 }
