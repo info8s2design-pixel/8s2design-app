@@ -30,7 +30,7 @@ jobs:
           const p='www/index.html';
           let html=fs.readFileSync(p,'utf8');
           const patch=`<style id="android-hide-install-action">
-          #install-app,#installApp,#installBtn,#install-button,#btn-install,
+          #install,#install-app,#installApp,#installBtn,#install-button,#btn-install,
           [data-action="install"],[data-install-app],[id*="installPwa"],
           [id*="install-pwa"] {display:none!important}
           </style>
@@ -54,6 +54,10 @@ jobs:
           const endHead=html.toLowerCase().indexOf('</head>');
           if(endHead<0) throw new Error('HTML head closing tag missing');
           html=html.slice(0,endHead)+patch+html.slice(endHead);
+          // Native APK must not be replaced by the website's cached service worker.
+          html=html.replace("if('serviceWorker' in navigator){window.addEventListener('load'", "if(false && 'serviceWorker' in navigator){window.addEventListener('load'");
+          // Remove the exact native-install control from packaged markup.
+          html=html.replace(/<button\\b(?=[^>]*\\bid=[\"']install[\"'])[^>]*>[\\s\\S]*?<\\/button>/i,'');
           fs.writeFileSync(p,html);
           NODE
           npx cap add android
@@ -99,6 +103,17 @@ jobs:
             @Override public void onResume() {{ super.onResume(); immersive(); }}
           }}
           """)
+          # Fullscreen at theme level, before the WebView draws.
+          values=root/'res'/'values'
+          styles=values/'styles.xml'
+          if styles.exists():
+              t=styles.read_text()
+              t=t.replace('</resources>', '<style name="Design8S2Fullscreen" parent="Theme.AppCompat.NoActionBar"><item name="android:windowFullscreen">true</item><item name="android:windowActionModeOverlay">true</item><item name="android:windowLightStatusBar">false</item></style></resources>')
+              styles.write_text(t)
+              manifest=root/'AndroidManifest.xml'
+              m=manifest.read_text()
+              m=m.replace('android:name=".MainActivity"', 'android:name=".MainActivity" android:theme="@style/Design8S2Fullscreen"')
+              manifest.write_text(m)
           PY
       - name: Set app icon
         run: |
