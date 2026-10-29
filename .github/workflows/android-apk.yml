@@ -116,7 +116,9 @@ jobs:
               styles.write_text(t)
               manifest=root/'AndroidManifest.xml'
               m=manifest.read_text()
-              m=m.replace('android:name=".MainActivity"', 'android:name=".MainActivity" android:theme="@style/Design8S2Fullscreen"')
+              # Replace the existing theme instead of adding a duplicate XML attribute.
+              import re
+              m=re.sub(r'(<activity\\b[^>]*\\bandroid:name="\\.MainActivity"[^>]*?)android:theme="[^"]+"',r'\\1android:theme="@style/Design8S2Fullscreen"',m, count=1, flags=re.S)
               manifest.write_text(m)
           PY
       - name: Set app icon
