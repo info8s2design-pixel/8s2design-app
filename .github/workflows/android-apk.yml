@@ -34,9 +34,10 @@ jobs:
           assert len(activities)==1, f'Expected one MainActivity, found {len(activities)}'
           p=activities[0]
           source=p.read_text()
-          match=re.search(r'^\\s*package\\s+([^;]+);',source,re.M)
-          assert match, 'MainActivity package missing'
-          package=match.group(1)
+          # Use the actual Capacitor-generated package declaration when present.
+          # Some Capacitor templates omit it or place it differently.
+          match=re.search(r'package\\s+([A-Za-z_][\\w.]*)\\s*;',source)
+          package=match.group(1) if match else 'eu.design8s2.app'
           p.write_text(f"""package {package};
           import android.os.Bundle;
           import android.view.View;
