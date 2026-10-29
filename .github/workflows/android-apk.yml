@@ -138,7 +138,7 @@ jobs:
           for name in ['ic_launcher.xml','ic_launcher_round.xml']:
               (adaptive/name).write_text(xml)
           # Explicitly bind both launcher icons in the native manifest.
-          manifest=root/'AndroidManifest.xml'
+          manifest=Path('android-build/android/app/src/main/AndroidManifest.xml')
           import re
           m=manifest.read_text()
           m=re.sub(r'android:icon="[^"]+"','android:icon="@mipmap/ic_launcher"',m)
