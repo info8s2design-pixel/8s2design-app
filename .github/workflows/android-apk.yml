@@ -73,7 +73,7 @@ jobs:
           python3 - <<'PY'
           from PIL import Image
           from pathlib import Path
-          src=Image.open('icons/icon-512.png').convert('RGBA')
+          src=Image.open('icons/android-logo.png').convert('RGBA')
           bbox=src.getbbox()
           if bbox: src=src.crop(bbox)
           root=Path('android-build/android/app/src/main/res')
