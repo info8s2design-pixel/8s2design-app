@@ -34,7 +34,7 @@ jobs:
           assert len(activities)==1, f'Expected one MainActivity, found {len(activities)}'
           p=activities[0]
           source=p.read_text()
-          match=re.search(r'^package\\s+([^;]+);',source,re.M)
+          match=re.search(r'^\\s*package\\s+([^;]+);',source,re.M)
           assert match, 'MainActivity package missing'
           package=match.group(1)
           p.write_text(f"""package {package};
