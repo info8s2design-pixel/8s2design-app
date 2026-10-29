@@ -23,6 +23,37 @@ jobs:
           printf '%s\n' '{"private":true,"dependencies":{"@capacitor/core":"^7.4.0","@capacitor/android":"^7.4.0"},"devDependencies":{"@capacitor/cli":"^7.4.0"}}' > package.json
           npm install
           node -e 'require("fs").writeFileSync("capacitor.config.json",JSON.stringify({appId:"eu.design8s2.app",appName:"8S2 Design",webDir:"www",server:{androidScheme:"https"}}))'
+          # Hide install prompts only in the packaged Android app.
+          # The published GitHub Pages PWA remains unchanged.
+          node - <<'NODE'
+          const fs=require('fs');
+          const p='www/index.html';
+          let html=fs.readFileSync(p,'utf8');
+          const patch=`<style id="android-hide-install-action">
+          #install-app,#installApp,#installBtn,#install-button,#btn-install,
+          [data-action="install"],[data-install-app],[id*="installPwa"],
+          [id*="install-pwa"] {display:none!important}
+          </style>
+          <script id="android-hide-install-script">
+          (function(){
+            function hideInstall(){
+              document.querySelectorAll('button,a,[role="button"]').forEach(function(el){
+                var label=((el.textContent||'')+' '+(el.getAttribute('aria-label')||'')).replace(/\\s+/g,' ').trim().toLowerCase();
+                if (/^(?:[↓⬇📲 ]*\\s*)?installa(?:\\s+l['’]app|\\s+app|\\s+la\\s+app|\\s+il\\s+gioco)?\\s*$/.test(label)) {
+                  el.style.setProperty('display','none','important');
+                  el.setAttribute('aria-hidden','true');
+                }
+              });
+            }
+            document.addEventListener('DOMContentLoaded',function(){
+              hideInstall();
+              new MutationObserver(hideInstall).observe(document.body,{childList:true,subtree:true});
+            });
+          })();
+          </script>`;
+          html=html.replace(/<\\/head>/i,patch+'</head>');
+          fs.writeFileSync(p,html);
+          NODE
           npx cap add android
       - name: Enable immersive fullscreen Android
         run: |
