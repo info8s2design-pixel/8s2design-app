@@ -1,0 +1,216 @@
+name: Build signed 8S2 Design Android release APK
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Create Capacitor project
+        run: |
+          mkdir -p android-build/www
+          find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github ! -name android-build -exec cp -a {} android-build/www/ \;
+          cd android-build
+          printf '%s\n' '{"private":true,"dependencies":{"@capacitor/core":"^7.4.0","@capacitor/android":"^7.4.0"},"devDependencies":{"@capacitor/cli":"^7.4.0"}}' > package.json
+          npm install
+          node -e 'require("fs").writeFileSync("capacitor.config.json",JSON.stringify({appId:"eu.design8s2.app",appName:"8S2 Design",webDir:"www",server:{androidScheme:"https"}}))'
+          # Hide install prompts only in the packaged Android app.
+          # The published GitHub Pages PWA remains unchanged.
+          node - <<'NODE'
+          const fs=require('fs');
+          const p='www/index.html';
+          let html=fs.readFileSync(p,'utf8');
+          const patch=`<style id="android-hide-install-action">
+          #install,#install-app,#installApp,#installBtn,#install-button,#btn-install,
+          [data-action="install"],[data-install-app],[id*="installPwa"],
+          [id*="install-pwa"] {display:none!important}
+          </style>
+          <script id="android-hide-install-script">
+          (function(){
+            function hideInstall(){
+              document.querySelectorAll('button,a,[role="button"]').forEach(function(el){
+                var label=((el.textContent||'')+' '+(el.getAttribute('aria-label')||'')).replace(/\\s+/g,' ').trim().toLowerCase();
+                if (/^(?:[↓⬇📲 ]*\\s*)?installa(?:\\s+l['’]app|\\s+app|\\s+la\\s+app|\\s+il\\s+gioco)?\\s*$/.test(label)) {
+                  el.style.setProperty('display','none','important');
+                  el.setAttribute('aria-hidden','true');
+                }
+              });
+            }
+            document.addEventListener('DOMContentLoaded',function(){
+              hideInstall();
+              new MutationObserver(hideInstall).observe(document.body,{childList:true,subtree:true});
+            });
+          })();
+          </script>`;
+          const endHead=html.toLowerCase().indexOf('</head>');
+          if(endHead<0) throw new Error('HTML head closing tag missing');
+          html=html.slice(0,endHead)+patch+html.slice(endHead);
+          // Native APK must not be replaced by the website's cached service worker.
+          html=html.replace("if('serviceWorker' in navigator){window.addEventListener('load'", "if(false && 'serviceWorker' in navigator){window.addEventListener('load'");
+          // Remove the exact native-install control from packaged markup.
+          const installStart=html.indexOf('<button class="btn" hidden="" id="install"');
+          if(installStart>=0){
+            const installEnd=html.indexOf('</button>',installStart);
+            if(installEnd>=0) html=html.slice(0,installStart)+html.slice(installEnd+'</button>'.length);
+          }
+          fs.writeFileSync(p,html);
+          NODE
+          npx cap add android
+      - name: Enable immersive fullscreen Android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('android-build/android/app/src/main')
+          activities=list((root/'java').rglob('MainActivity.java'))
+          assert len(activities)==1, f'Expected one MainActivity, found {len(activities)}'
+          p=activities[0]
+          source=p.read_text()
+          # Use the actual Capacitor-generated package declaration when present.
+          # Some Capacitor templates omit it or place it differently.
+          match=re.search(r'package\\s+([A-Za-z_][\\w.]*)\\s*;',source)
+          package=match.group(1) if match else 'eu.design8s2.app'
+          p.write_text(f"""package {package};
+          import android.os.Bundle;
+          import android.view.View;
+          import android.view.WindowInsets;
+          import android.view.WindowInsetsController;
+          import com.getcapacitor.BridgeActivity;
+          public class MainActivity extends BridgeActivity {{
+            private void immersive() {{
+              getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+                View.SYSTEM_UI_FLAG_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+              if (android.os.Build.VERSION.SDK_INT >= 30) {{
+                WindowInsetsController controller = getWindow().getInsetsController();
+                if (controller != null) {{
+                  controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                  controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                }}
+              }}
+            }}
+            @Override public void onCreate(Bundle state) {{ super.onCreate(state); immersive(); }}
+            @Override public void onWindowFocusChanged(boolean focused) {{ super.onWindowFocusChanged(focused); if (focused) immersive(); }}
+            @Override public void onResume() {{ super.onResume(); immersive(); }}
+          }}
+          """)
+          # Fullscreen at theme level, before the WebView draws.
+          values=root/'res'/'values'
+          styles=values/'styles.xml'
+          if styles.exists():
+              t=styles.read_text()
+              t=t.replace('</resources>', '<style name="Design8S2Fullscreen" parent="Theme.AppCompat.NoActionBar"><item name="android:windowFullscreen">true</item><item name="android:windowActionModeOverlay">true</item><item name="android:windowLightStatusBar">false</item></style></resources>')
+              styles.write_text(t)
+              manifest=root/'AndroidManifest.xml'
+              m=manifest.read_text()
+              # Replace the existing theme instead of adding a duplicate XML attribute.
+              import re
+              m=re.sub(r'(<activity\\b[^>]*\\bandroid:name="\\.MainActivity"[^>]*?)android:theme="[^"]+"',r'\\1android:theme="@style/Design8S2Fullscreen"',m, count=1, flags=re.S)
+              manifest.write_text(m)
+          PY
+      - name: Set app icon
+        run: |
+          python3 -m pip install --quiet Pillow
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          src=Image.open('icons/android-logo.png').convert('RGBA')
+          bbox=src.getbbox()
+          if bbox: src=src.crop(bbox)
+          root=Path('android-build/android/app/src/main/res')
+          def padded(size, fraction):
+              canvas=Image.new('RGBA',(size,size),(5,9,19,255))
+              limit=round(size*fraction)
+              logo=src.copy()
+              logo.thumbnail((limit,limit),Image.Resampling.LANCZOS)
+              canvas.alpha_composite(logo,((size-logo.width)//2,(size-logo.height)//2))
+              return canvas
+          for density,size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
+              folder=root/f'mipmap-{density}'
+              folder.mkdir(parents=True,exist_ok=True)
+              icon=padded(size,0.72)
+              for name in ['ic_launcher.png','ic_launcher_round.png']:
+                  icon.save(folder/name)
+          # Use a unique drawable name to avoid Android's stock foreground
+          # from drawable-v24 overriding our icon on modern devices.
+          foreground=root/'drawable-nodpi'/'design8s2_foreground.png'
+          foreground.parent.mkdir(parents=True,exist_ok=True)
+          padded(432,0.52).save(foreground)
+          adaptive=root/'mipmap-anydpi-v26'
+          adaptive.mkdir(parents=True,exist_ok=True)
+          xml='''<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+            <background android:drawable="@color/ic_launcher_background"/>
+            <foreground android:drawable="@drawable/design8s2_foreground"/>
+          </adaptive-icon>'''
+          for name in ['ic_launcher.xml','ic_launcher_round.xml']:
+              (adaptive/name).write_text(xml)
+          # Explicitly bind both launcher icons in the native manifest.
+          manifest=Path('android-build/android/app/src/main/AndroidManifest.xml')
+          import re
+          m=manifest.read_text()
+          m=re.sub(r'android:icon="[^"]+"','android:icon="@mipmap/ic_launcher"',m)
+          m=re.sub(r'android:roundIcon="[^"]+"','android:roundIcon="@mipmap/ic_launcher_round"',m)
+          manifest.write_text(m)
+          # Capacitor already defines ic_launcher_background in values/ic_launcher_background.xml.
+          # Reuse that resource instead of declaring a duplicate in colors.xml.
+          PY
+      - name: Verify release signing secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_B64" || (echo "Missing ANDROID_KEYSTORE_BASE64 in this repository" && exit 1)
+          test -n "$KEYSTORE_PASS" || (echo "Missing ANDROID_KEYSTORE_PASSWORD in this repository" && exit 1)
+      - name: Restore keystore and configure release
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > android-build/android/app/8s2-release.jks
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android-build/android/app/build.gradle')
+          s=p.read_text()
+          s+="""
+          android {
+            defaultConfig {
+              versionCode 100000 + Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
+              versionName '1.0'
+            }
+            signingConfigs {
+              release {
+                storeFile file('8s2-release.jks')
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias '8s2worldsoccer'
+                keyPassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+              }
+            }
+            buildTypes {
+              release { signingConfig signingConfigs.release }
+            }
+          }
+          """
+          p.write_text(s)
+          PY
+      - name: Build signed release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: cd android-build/android && chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 8s2-design-android-signed-release
+          path: android-build/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
