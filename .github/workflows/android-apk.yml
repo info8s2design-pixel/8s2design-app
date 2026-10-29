@@ -1,0 +1,48 @@
+name: Build 8S2 Design Android APK
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Create Capacitor project
+        run: |
+          mkdir -p android-build/www
+          find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github ! -name android-build -exec cp -a {} android-build/www/ \;
+          cd android-build
+          printf '%s\n' '{"private":true,"dependencies":{"@capacitor/core":"^7.4.0","@capacitor/android":"^7.4.0"},"devDependencies":{"@capacitor/cli":"^7.4.0"}}' > package.json
+          npm install
+          node -e 'require("fs").writeFileSync("capacitor.config.json",JSON.stringify({appId:"eu.design8s2.app",appName:"8S2 Design",webDir:"www",server:{androidScheme:"https"}}))'
+          npx cap add android
+      - name: Set app icon
+        run: |
+          python3 -m pip install --quiet Pillow
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          src=Image.open('icons/icon-512.png').convert('RGBA')
+          root=Path('android-build/android/app/src/main/res')
+          for density,size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
+              folder=root/f'mipmap-{density}'
+              folder.mkdir(parents=True,exist_ok=True)
+              icon=src.resize((size,size),Image.Resampling.LANCZOS)
+              for name in ['ic_launcher.png','ic_launcher_round.png','ic_launcher_foreground.png']:
+                  icon.save(folder/name)
+          PY
+      - name: Build signed installable APK (debug signature)
+        run: cd android-build/android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 8s2-design-android-apk
+          path: android-build/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
