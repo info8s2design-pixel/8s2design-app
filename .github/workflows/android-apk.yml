@@ -51,7 +51,9 @@ jobs:
             });
           })();
           </script>`;
-          html=html.replace(/<\\/head>/i,patch+'</head>');
+          const endHead=html.toLowerCase().indexOf('</head>');
+          if(endHead<0) throw new Error('HTML head closing tag missing');
+          html=html.slice(0,endHead)+patch+html.slice(endHead);
           fs.writeFileSync(p,html);
           NODE
           npx cap add android
