@@ -123,7 +123,9 @@ jobs:
               icon=padded(size,0.72)
               for name in ['ic_launcher.png','ic_launcher_round.png']:
                   icon.save(folder/name)
-          foreground=root/'drawable'/'ic_launcher_foreground.png'
+          # Use a unique drawable name to avoid Android's stock foreground
+          # from drawable-v24 overriding our icon on modern devices.
+          foreground=root/'drawable-nodpi'/'design8s2_foreground.png'
           foreground.parent.mkdir(parents=True,exist_ok=True)
           padded(432,0.52).save(foreground)
           adaptive=root/'mipmap-anydpi-v26'
@@ -131,10 +133,17 @@ jobs:
           xml='''<?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
             <background android:drawable="@color/ic_launcher_background"/>
-            <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+            <foreground android:drawable="@drawable/design8s2_foreground"/>
           </adaptive-icon>'''
           for name in ['ic_launcher.xml','ic_launcher_round.xml']:
               (adaptive/name).write_text(xml)
+          # Explicitly bind both launcher icons in the native manifest.
+          manifest=root/'AndroidManifest.xml'
+          import re
+          m=manifest.read_text()
+          m=re.sub(r'android:icon="[^"]+"','android:icon="@mipmap/ic_launcher"',m)
+          m=re.sub(r'android:roundIcon="[^"]+"','android:roundIcon="@mipmap/ic_launcher_round"',m)
+          manifest.write_text(m)
           # Capacitor already defines ic_launcher_background in values/ic_launcher_background.xml.
           # Reuse that resource instead of declaring a duplicate in colors.xml.
           PY
