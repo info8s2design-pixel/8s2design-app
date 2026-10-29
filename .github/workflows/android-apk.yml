@@ -24,6 +24,48 @@ jobs:
           npm install
           node -e 'require("fs").writeFileSync("capacitor.config.json",JSON.stringify({appId:"eu.design8s2.app",appName:"8S2 Design",webDir:"www",server:{androidScheme:"https"}}))'
           npx cap add android
+      - name: Enable immersive fullscreen Android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('android-build/android/app/src/main')
+          activities=list((root/'java').rglob('MainActivity.java'))
+          assert len(activities)==1, f'Expected one MainActivity, found {len(activities)}'
+          p=activities[0]
+          source=p.read_text()
+          match=re.search(r'^package\\s+([^;]+);',source,re.M)
+          assert match, 'MainActivity package missing'
+          package=match.group(1)
+          p.write_text(f"""package {package};
+          import android.os.Bundle;
+          import android.view.View;
+          import android.view.WindowInsets;
+          import android.view.WindowInsetsController;
+          import com.getcapacitor.BridgeActivity;
+          public class MainActivity extends BridgeActivity {{
+            private void immersive() {{
+              getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+                View.SYSTEM_UI_FLAG_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+              if (android.os.Build.VERSION.SDK_INT >= 30) {{
+                WindowInsetsController controller = getWindow().getInsetsController();
+                if (controller != null) {{
+                  controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                  controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                }}
+              }}
+            }}
+            @Override public void onCreate(Bundle state) {{ super.onCreate(state); immersive(); }}
+            @Override public void onWindowFocusChanged(boolean focused) {{ super.onWindowFocusChanged(focused); if (focused) immersive(); }}
+            @Override public void onResume() {{ super.onResume(); immersive(); }}
+          }}
+          """)
+          PY
       - name: Set app icon
         run: |
           python3 -m pip install --quiet Pillow
@@ -31,13 +73,43 @@ jobs:
           from PIL import Image
           from pathlib import Path
           src=Image.open('icons/icon-512.png').convert('RGBA')
+          bbox=src.getbbox()
+          if bbox: src=src.crop(bbox)
           root=Path('android-build/android/app/src/main/res')
+          def padded(size, fraction):
+              canvas=Image.new('RGBA',(size,size),(5,9,19,255))
+              limit=round(size*fraction)
+              logo=src.copy()
+              logo.thumbnail((limit,limit),Image.Resampling.LANCZOS)
+              canvas.alpha_composite(logo,((size-logo.width)//2,(size-logo.height)//2))
+              return canvas
           for density,size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
               folder=root/f'mipmap-{density}'
               folder.mkdir(parents=True,exist_ok=True)
-              icon=src.resize((size,size),Image.Resampling.LANCZOS)
-              for name in ['ic_launcher.png','ic_launcher_round.png','ic_launcher_foreground.png']:
+              icon=padded(size,0.72)
+              for name in ['ic_launcher.png','ic_launcher_round.png']:
                   icon.save(folder/name)
+          foreground=root/'drawable'/'ic_launcher_foreground.png'
+          foreground.parent.mkdir(parents=True,exist_ok=True)
+          padded(432,0.52).save(foreground)
+          adaptive=root/'mipmap-anydpi-v26'
+          adaptive.mkdir(parents=True,exist_ok=True)
+          xml='''<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+            <background android:drawable="@color/ic_launcher_background"/>
+            <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+          </adaptive-icon>'''
+          for name in ['ic_launcher.xml','ic_launcher_round.xml']:
+              (adaptive/name).write_text(xml)
+          colors=root/'values'/'colors.xml'
+          colors.parent.mkdir(parents=True,exist_ok=True)
+          if colors.exists():
+              text=colors.read_text()
+              if 'name="ic_launcher_background"' not in text:
+                  text=text.replace('</resources>','<color name="ic_launcher_background">#050913</color></resources>')
+          else:
+              text='<resources><color name="ic_launcher_background">#050913</color></resources>'
+          colors.write_text(text)
           PY
       - name: Build signed installable APK (debug signature)
         run: cd android-build/android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
