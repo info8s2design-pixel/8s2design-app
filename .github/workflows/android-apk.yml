@@ -57,7 +57,11 @@ jobs:
           // Native APK must not be replaced by the website's cached service worker.
           html=html.replace("if('serviceWorker' in navigator){window.addEventListener('load'", "if(false && 'serviceWorker' in navigator){window.addEventListener('load'");
           // Remove the exact native-install control from packaged markup.
-          html=html.replace(/<button\\b(?=[^>]*\\bid=[\"']install[\"'])[^>]*>[\\s\\S]*?<\\/button>/i,'');
+          const installStart=html.indexOf('<button class="btn" hidden="" id="install"');
+          if(installStart>=0){
+            const installEnd=html.indexOf('</button>',installStart);
+            if(installEnd>=0) html=html.slice(0,installStart)+html.slice(installEnd+'</button>'.length);
+          }
           fs.writeFileSync(p,html);
           NODE
           npx cap add android
