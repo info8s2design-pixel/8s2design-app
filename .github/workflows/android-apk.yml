@@ -102,15 +102,8 @@ jobs:
           </adaptive-icon>'''
           for name in ['ic_launcher.xml','ic_launcher_round.xml']:
               (adaptive/name).write_text(xml)
-          colors=root/'values'/'colors.xml'
-          colors.parent.mkdir(parents=True,exist_ok=True)
-          if colors.exists():
-              text=colors.read_text()
-              if 'name="ic_launcher_background"' not in text:
-                  text=text.replace('</resources>','<color name="ic_launcher_background">#050913</color></resources>')
-          else:
-              text='<resources><color name="ic_launcher_background">#050913</color></resources>'
-          colors.write_text(text)
+          # Capacitor already defines ic_launcher_background in values/ic_launcher_background.xml.
+          # Reuse that resource instead of declaring a duplicate in colors.xml.
           PY
       - name: Build signed installable APK (debug signature)
         run: cd android-build/android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
